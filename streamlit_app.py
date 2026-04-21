@@ -19,7 +19,7 @@ st.set_page_config(
     layout="wide",
 )
 
-# 🔥 IMPROVED UI CSS
+
 st.markdown(
     """
     <style>
@@ -130,8 +130,6 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-
-# 🔥 TITLE UPGRADE
 st.title("Misinfo Buster")
 st.caption("AI-powered WhatsApp Fact Checker • RAG • LLM • Real-time Verification")
 
@@ -191,8 +189,6 @@ def display_results(data: dict) -> None:
 
     st.caption(f"Processed in {processing_time_ms}ms")
 
-
-# TEXT TAB
 with tab_text:
     text_input = st.text_area("Paste the WhatsApp forward here", height=150)
     if st.button("Check Text", key="btn_text"):
@@ -214,7 +210,6 @@ with tab_text:
                     st.error(f"Failed to connect to API: {exc}")
 
 
-# IMAGE TAB
 with tab_image:
     uploaded_file = st.file_uploader("Upload screenshot", type=["jpg", "jpeg", "png"])
     if st.button("Check Image", key="btn_image"):
@@ -236,7 +231,6 @@ with tab_image:
                     st.error(f"Failed to connect to API: {exc}")
 
 
-# URL TAB
 with tab_url:
     url_input = st.text_input("Enter URL")
     if st.button("Check URL", key="btn_url"):

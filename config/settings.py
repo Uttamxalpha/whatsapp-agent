@@ -1,5 +1,16 @@
+import os
+
 from pydantic_settings import BaseSettings
 from pydantic import Field
+
+try:
+    import streamlit as _st
+    _secrets = dict(_st.secrets)
+    for k, v in _secrets.items():
+        if k not in os.environ:
+            os.environ[k] = str(v)
+except Exception:
+    pass
 
 
 class Settings(BaseSettings):
