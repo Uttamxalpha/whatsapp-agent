@@ -1,13 +1,21 @@
+import asyncio
 import base64
 import logging
+import time
 
-import requests
 import streamlit as st
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-VERDICT_COLORS: dict[str, str] = {
+from agents.graph import compiled_graph
+from rag.corpus_loader import load_corpus
+
+if "corpus_loaded" not in st.session_state:
+    load_corpus()
+    st.session_state.corpus_loaded = True
+
+VERDICT_COLORS = {
     "TRUE": "#22c55e",
     "FALSE": "#ef4444",
     "MISLEADING": "#f97316",
@@ -18,7 +26,6 @@ st.set_page_config(
     page_title="Misinfo Buster - WhatsApp Fact Checker",
     layout="wide",
 )
-
 
 st.markdown(
     """
@@ -49,7 +56,6 @@ st.markdown(
         margin-bottom: 10px;
     }
 
-    /* 🔥 MAIN GITHUB BUTTON */
     .github-main {
         display: flex;
         align-items: center;
@@ -110,7 +116,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# 🔥 GITHUB HERO BAR
 st.markdown(
     """
     <div class="social-bar">
@@ -130,13 +135,11 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
 st.title("Misinfo Buster")
-st.caption("AI-powered WhatsApp Fact Checker • RAG • LLM • Real-time Verification")
+st.caption("AI-powered WhatsApp Fact Checker - RAG - LLM - Real-time Verification")
 
 with st.sidebar:
-    st.header("Settings")
-    api_base = st.text_input("API Base URL", value="http://localhost:8000")
-    st.divider()
     st.header("How to use")
     st.markdown(
         "1. Paste a WhatsApp forward in the **Text** tab\n"
@@ -145,16 +148,49 @@ with st.sidebar:
         "4. Click **Check** to fact-check the content"
     )
 
-tab_text, tab_image, tab_url = st.tabs(["Text", "Image", "URL"])
+
+def build_initial_state(input_type, content):
+    """Build a minimal AgentState dict for graph invocation."""
+    return {
+        "input_type": input_type,
+        "raw_input": content,
+        "extracted_text": "",
+        "detected_language": "",
+        "claims": [],
+        "claim_results": [],
+        "verdict": "",
+        "confidence": 0.0,
+        "explanation": "",
+        "sources": [],
+        "processing_time_ms": 0,
+        "error": None,
+    }
 
 
-def display_results(data: dict) -> None:
+def run_pipeline(input_type, content):
+    """Run the LangGraph pipeline directly and return the result dict."""
+    initial_state = build_initial_state(input_type, content)
+    start_time = time.time()
+    loop = asyncio.new_event_loop()
+    result = loop.run_until_complete(compiled_graph.ainvoke(initial_state))
+    loop.close()
+    processing_time_ms = int((time.time() - start_time) * 1000)
+    result["processing_time_ms"] = processing_time_ms
+    return result
+
+
+def display_results(data):
+    """Display fact-check results with verdict badge and claim breakdown."""
     verdict = data.get("verdict", "UNVERIFIABLE")
     confidence = data.get("confidence", 0.0)
     explanation = data.get("explanation", "")
     claim_results = data.get("claim_results", [])
     sources = data.get("sources", [])
     processing_time_ms = data.get("processing_time_ms", 0)
+
+    if data.get("error"):
+        st.error(f"Pipeline error: {data['error']}")
+        return
 
     color = VERDICT_COLORS.get(verdict, "#6b7280")
     st.markdown(
@@ -168,11 +204,12 @@ def display_results(data: dict) -> None:
     if claim_results:
         with st.expander("Claim-by-claim breakdown"):
             for i, cr in enumerate(claim_results, 1):
-                cr_color = VERDICT_COLORS.get(cr.get("verdict", ""), "#6b7280")
+                cr_verdict = cr.get("sub_verdict", cr.get("verdict", ""))
+                cr_color = VERDICT_COLORS.get(cr_verdict, "#6b7280")
                 st.markdown(f"**Claim {i}:** {cr.get('claim', '')}")
                 st.markdown(
                     f'<span style="color: {cr_color}; font-weight: bold;">'
-                    f'{cr.get("verdict", "")}</span> '
+                    f'{cr_verdict}</span> '
                     f'(confidence: {cr.get("confidence", 0.0):.0%})',
                     unsafe_allow_html=True,
                 )
@@ -189,6 +226,9 @@ def display_results(data: dict) -> None:
 
     st.caption(f"Processed in {processing_time_ms}ms")
 
+
+tab_text, tab_image, tab_url = st.tabs(["Text", "Image", "URL"])
+
 with tab_text:
     text_input = st.text_area("Paste the WhatsApp forward here", height=150)
     if st.button("Check Text", key="btn_text"):
@@ -197,18 +237,10 @@ with tab_text:
         else:
             with st.spinner("Fact-checking..."):
                 try:
-                    resp = requests.post(
-                        f"{api_base}/api/v1/check/text",
-                        json={"text": text_input},
-                        timeout=120,
-                    )
-                    if resp.status_code == 200:
-                        display_results(resp.json())
-                    else:
-                        st.error(f"API error ({resp.status_code}): {resp.text}")
-                except requests.exceptions.RequestException as exc:
-                    st.error(f"Failed to connect to API: {exc}")
-
+                    result = run_pipeline("text", text_input)
+                    display_results(result)
+                except Exception as exc:
+                    st.error(f"Error: {exc}")
 
 with tab_image:
     uploaded_file = st.file_uploader("Upload screenshot", type=["jpg", "jpeg", "png"])
@@ -218,18 +250,11 @@ with tab_image:
         else:
             with st.spinner("Fact-checking..."):
                 try:
-                    resp = requests.post(
-                        f"{api_base}/api/v1/check/image",
-                        files={"file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)},
-                        timeout=120,
-                    )
-                    if resp.status_code == 200:
-                        display_results(resp.json())
-                    else:
-                        st.error(f"API error ({resp.status_code}): {resp.text}")
-                except requests.exceptions.RequestException as exc:
-                    st.error(f"Failed to connect to API: {exc}")
-
+                    b64_content = base64.b64encode(uploaded_file.getvalue()).decode("utf-8")
+                    result = run_pipeline("image", b64_content)
+                    display_results(result)
+                except Exception as exc:
+                    st.error(f"Error: {exc}")
 
 with tab_url:
     url_input = st.text_input("Enter URL")
@@ -239,20 +264,11 @@ with tab_url:
         else:
             with st.spinner("Fact-checking..."):
                 try:
-                    resp = requests.post(
-                        f"{api_base}/api/v1/check",
-                        json={"input_type": "url", "content": url_input},
-                        timeout=120,
-                    )
-                    if resp.status_code == 200:
-                        display_results(resp.json())
-                    else:
-                        st.error(f"API error ({resp.status_code}): {resp.text}")
-                except requests.exceptions.RequestException as exc:
-                    st.error(f"Failed to connect to API: {exc}")
+                    result = run_pipeline("url", url_input)
+                    display_results(result)
+                except Exception as exc:
+                    st.error(f"Error: {exc}")
 
-
-# FOOTER
 st.markdown("---")
 st.markdown(
     """
