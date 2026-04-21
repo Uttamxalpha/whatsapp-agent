@@ -10,6 +10,11 @@ It extracts factual claims, verifies them using **web search + RAG**, and return
 - Uses multi-step agent reasoning  
 
 ---
+<img width="1470" height="956" alt="Screenshot 2026-04-21 at 9 06 10 AM" src="https://github.com/user-attachments/assets/2bbe891b-1e73-486e-b262-1ab97df72a77" />
+<img width="1470" height="956" alt="Screenshot 2026-04-21 at 9 05 56 AM" src="https://github.com/user-attachments/assets/23f77d7a-49bd-4ef4-ba95-9d2329ca21a1" />
+
+
+
 
 ## 🧠 How It Works  
 Input (Text / Image / URL)
